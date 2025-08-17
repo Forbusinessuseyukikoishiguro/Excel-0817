@@ -1,0 +1,252 @@
+# 📧 メールアドレス含有レコード抽出ツール
+
+Excelファイルからメールアドレスを含む行全体を抽出するGUIツールです。
+
+![Python](https://img.shields.io/badge/Python-3.7+-blue.svg)
+![License](https://img.shields.io/badge/License-MIT-green.svg)
+![Platform](https://img.shields.io/badge/Platform-Windows%20|%20macOS%20|%20Linux-lightgrey.svg)
+
+## 🌟 特徴
+
+- **📊 行全体抽出**: メールアドレスを含む行の全データを取得
+- **🎨 直感的なGUI**: tkinterベースの使いやすいインターフェース
+- **🔍 高精度検出**: 正規表現による正確なメールアドレス検出
+- **⚡ 高速処理**: 非同期処理でUIの応答性を維持
+- **🔧 柔軟な設定**: 重複処理オプションとフィルタリング機能
+- **💾 安全な保存**: ファイル状態確認とエラーハンドリング
+
+## 📷 スクリーンショット
+
+```
+┌─────────────────────────────────────────┐
+│  メールアドレス含有レコード抽出ツール     │
+├─────────────────────────────────────────┤
+│ ファイル選択                              │
+│ 入力Excelファイル: [          ] [参照]    │
+│ 出力Excelファイル: [          ] [参照]    │
+├─────────────────────────────────────────┤
+│ 抽出オプション                           │
+│ [レコード抽出] 重複処理: [keep_first ▼]  │
+│ ドメインフィルター: [gmail.com  ] [適用]  │
+├─────────────────────────────────────────┤
+│ 抽出結果                                 │
+│ ┌─────────────────────────────────────┐ │
+│ │No.│Row│Emails           │名前│会社  │ │
+│ │ 1 │ 2 │user@example.com │田中│A社   │ │
+│ │ 2 │ 5 │test@gmail.com   │佐藤│B社   │ │
+│ └─────────────────────────────────────┘ │
+│ 抽出済み: 2レコード                      │
+├─────────────────────────────────────────┤
+│ 出力シート名: [メールアドレス含有レコード] │
+│ [選択レコードを出力] [全レコードを出力]   │
+└─────────────────────────────────────────┘
+```
+
+## 🚀 インストール
+
+### 1. 前提条件
+
+- Python 3.7以上
+- pip
+
+### 2. リポジトリのクローン
+
+```bash
+git clone https://github.com/yourusername/email-record-extractor.git
+cd email-record-extractor
+```
+
+### 3. 依存関係のインストール
+
+```bash
+pip install -r requirements.txt
+```
+
+### 4. 実行
+
+```bash
+python email_extractor.py
+```
+
+## 📦 必要なライブラリ
+
+```txt
+pandas>=1.3.0
+openpyxl>=3.0.0
+tkinter (Pythonに標準で含まれています)
+```
+
+## 🔧 使い方
+
+### 基本的な使用手順
+
+1. **ファイル選択**
+   - 「参照」ボタンで入力Excelファイルを選択
+   - 出力先ファイルを指定
+
+2. **抽出実行**
+   - 「レコード抽出」ボタンをクリック
+   - プログレスバーで進捗を確認
+
+3. **結果確認**
+   - 抽出されたレコードを表形式で確認
+   - 必要に応じてドメインフィルターを適用
+
+4. **保存**
+   - 「選択レコードを出力」または「全レコードを出力」で保存
+
+### 重複処理オプション
+
+| オプション | 説明 |
+|-----------|------|
+| `keep_first` | 最初に見つかったレコードのみ保持 |
+| `keep_all` | 重複も含めて全て保持 |
+| `remove_all` | 重複があるレコードは除外 |
+
+### ドメインフィルター
+
+特定のドメインでレコードをフィルタリングできます。
+
+例:
+- `gmail.com` → Gmailアドレスのみ表示
+- `co.jp` → 日本の企業ドメインのみ表示
+
+## 📋 入出力例
+
+### 入力データ（Excel）
+
+| 名前 | 会社 | 連絡先 | 備考 |
+|------|------|--------|------|
+| 田中 | A社 | tanaka@a.com | 営業 |
+| 佐藤 | B社 | 03-1234-5678 | 経理 |
+| 鈴木 | C社 | suzuki@c.co.jp, sub@c.co.jp | 技術 |
+
+### 出力データ（Excel）
+
+| 名前 | 会社 | 連絡先 | 備考 | 抽出されたメールアドレス | 元の行番号 |
+|------|------|--------|------|------------------------|------------|
+| 田中 | A社 | tanaka@a.com | 営業 | tanaka@a.com | 2 |
+| 鈴木 | C社 | suzuki@c.co.jp, sub@c.co.jp | 技術 | suzuki@c.co.jp, sub@c.co.jp | 4 |
+
+## ⚠️ トラブルシューティング
+
+### よくある問題と解決方法
+
+#### 1. "Permission denied" エラー
+
+**原因**: 出力ファイルが他のアプリケーションで開かれている
+
+**解決方法**:
+- Excelファイルを閉じる
+- 「ファイル状態確認」ボタンで確認
+- 別名で保存を選択
+
+#### 2. メールアドレスが検出されない
+
+**原因**: 特殊な形式のメールアドレス
+
+**解決方法**:
+- データの形式を確認
+- 必要に応じて正規表現パターンを調整
+
+#### 3. 大きなファイルで動作が遅い
+
+**解決方法**:
+- ファイルサイズを確認
+- 処理中はプログレスバーで進捗を確認
+- 必要に応じてファイルを分割
+
+## 🛠️ 開発情報
+
+### ファイル構成
+
+```
+email-record-extractor/
+├── email_extractor.py      # メインプログラム
+├── requirements.txt        # 依存関係
+├── README.md              # このファイル
+├── LICENSE                # ライセンス
+└── examples/              # サンプルファイル
+    ├── sample_input.xlsx
+    └── sample_output.xlsx
+```
+
+### 主要なクラスとメソッド
+
+```python
+class EmailRecordExtractor:
+    def __init__(self, root)                    # 初期化
+    def setup_ui(self)                          # UI構築
+    def extract_records(self)                   # レコード抽出
+    def _extract_records_worker(self, input_file) # 抽出処理
+    def _process_duplicates(self, email_rows)   # 重複処理
+    def save_selected_records(self)             # 選択保存
+    def save_all_records(self)                  # 全件保存
+    def check_file_status(self)                 # ファイル状態確認
+```
+
+## 🤝 コントリビューション
+
+プルリクエストや Issue の投稿を歓迎します！
+
+### 開発環境のセットアップ
+
+1. リポジトリをフォーク
+2. 開発ブランチを作成: `git checkout -b feature/amazing-feature`
+3. 変更をコミット: `git commit -m 'Add amazing feature'`
+4. ブランチにプッシュ: `git push origin feature/amazing-feature`
+5. プルリクエストを作成
+
+### コーディング規約
+
+- PEP 8に準拠
+- docstringを記述
+- 型ヒントを使用（Python 3.7+）
+
+## 📝 変更履歴
+
+### v1.2.0 (2024-XX-XX)
+- ファイル状態確認機能を追加
+- エラーハンドリングを改善
+- 別名保存機能を追加
+
+### v1.1.0 (2024-XX-XX)
+- ドメインフィルター機能を追加
+- 重複処理オプションを実装
+- UI の改善
+
+### v1.0.0 (2024-XX-XX)
+- 初回リリース
+- 基本的なメールアドレス抽出機能
+
+## 📄 ライセンス
+
+このプロジェクトは MIT ライセンスの下で公開されています。詳細は [LICENSE](LICENSE) ファイルを参照してください。
+
+## 👨‍💻 作者
+
+**新人エンジニア**
+- GitHub: [@yourusername](https://github.com/yourusername)
+- Twitter: [@yourusername](https://twitter.com/yourusername)
+- Blog: [note記事](https://note.com/yourusername)
+
+## 🙏 謝辞
+
+- [pandas](https://pandas.pydata.org/) - データ処理
+- [openpyxl](https://openpyxl.readthedocs.io/) - Excel操作
+- [tkinter](https://docs.python.org/3/library/tkinter.html) - GUI
+- [Claude](https://claude.ai/) - AI開発支援
+
+## 📞 サポート
+
+質問や問題がある場合は、以下の方法でお気軽にお問い合わせください：
+
+- GitHub Issues: [Issues](https://github.com/yourusername/email-record-extractor/issues)
+- Email: your.email@example.com
+- Twitter: [@yourusername](https://twitter.com/yourusername)
+
+---
+
+⭐ このプロジェクトが役に立った場合は、スターをつけてください！
+
+![GitHub stars](https://img.shields.io/github/stars/yourusername/email-record-extractor?style=social)
