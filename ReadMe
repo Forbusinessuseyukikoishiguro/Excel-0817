@@ -2,9 +2,6 @@
 
 Excelファイルからメールアドレスを含む行全体を抽出するGUIツールです。
 
-![Python](https://img.shields.io/badge/Python-3.7+-blue.svg)
-![License](https://img.shields.io/badge/License-MIT-green.svg)
-![Platform](https://img.shields.io/badge/Platform-Windows%20|%20macOS%20|%20Linux-lightgrey.svg)
 
 ## 🌟 特徴
 
@@ -15,7 +12,7 @@ Excelファイルからメールアドレスを含む行全体を抽出するGUI
 - **🔧 柔軟な設定**: 重複処理オプションとフィルタリング機能
 - **💾 安全な保存**: ファイル状態確認とエラーハンドリング
 
-## 📷 スクリーンショット
+
 
 ```
 ┌─────────────────────────────────────────┐
@@ -220,33 +217,7 @@ class EmailRecordExtractor:
 - 基本的なメールアドレス抽出機能
 
 ## 📄 ライセンス
+yukikoishiguro
 
-このプロジェクトは MIT ライセンスの下で公開されています。詳細は [LICENSE](LICENSE) ファイルを参照してください。
-
-## 👨‍💻 作者
-
-**新人エンジニア**
-- GitHub: [@yourusername](https://github.com/yourusername)
-- Twitter: [@yourusername](https://twitter.com/yourusername)
-- Blog: [note記事](https://note.com/yourusername)
-
-## 🙏 謝辞
-
-- [pandas](https://pandas.pydata.org/) - データ処理
-- [openpyxl](https://openpyxl.readthedocs.io/) - Excel操作
-- [tkinter](https://docs.python.org/3/library/tkinter.html) - GUI
-- [Claude](https://claude.ai/) - AI開発支援
-
-## 📞 サポート
-
-質問や問題がある場合は、以下の方法でお気軽にお問い合わせください：
-
-- GitHub Issues: [Issues](https://github.com/yourusername/email-record-extractor/issues)
-- Email: your.email@example.com
-- Twitter: [@yourusername](https://twitter.com/yourusername)
-
----
-
-⭐ このプロジェクトが役に立った場合は、スターをつけてください！
-
-![GitHub stars](https://img.shields.io/github/stars/yourusername/email-record-extractor?style=social)
+##環境テスト
+VSCODE　Windows
