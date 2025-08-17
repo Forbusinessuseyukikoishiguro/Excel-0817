@@ -1,0 +1,739 @@
+# Excelファイル操作のためのライブラリをインポート
+import pandas as pd
+# 正規表現（パターンマッチング）を使うためのライブラリをインポート
+import re
+# Excel詳細操作（ワークブック、シート操作）のためのライブラリをインポート
+from openpyxl import load_workbook, Workbook
+# GUI作成のためのtkinterライブラリをインポート
+import tkinter as tk
+# tkinterの拡張ウィジェット（ttk）、ファイルダイアログ、メッセージボックスをインポート
+from tkinter import ttk, filedialog, messagebox
+# マルチスレッド処理（重い処理を別スレッドで実行）のためのライブラリをインポート
+import threading
+
+# メールアドレス含有レコード抽出ツールのメインクラスを定義
+class EmailRecordExtractor:
+    # コンストラクタ：インスタンス作成時に実行される初期化メソッド
+    def __init__(self, root):
+        # メインウィンドウオブジェクトをインスタンス変数として保存
+        self.root = root
+        # ウィンドウのタイトルバーに表示される文字列を設定
+        self.root.title("メールアドレス含有レコード抽出ツール")
+        # ウィンドウのサイズを幅1000ピクセル、高さ700ピクセルに設定
+        self.root.geometry("1000x700")
+        
+        # メールアドレスを検出するための正規表現パターンを定義
+        # \b: 単語境界, [A-Za-z0-9._%+-]+: 英数字等1文字以上, @: アットマーク
+        # [A-Za-z0-9.-]+: ドメイン部の英数字等, \.: ピリオド, [A-Z|a-z]{2,}: トップレベルドメイン2文字以上
+        self.email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+        # 抽出したレコード（行）の情報を保存するリストを初期化
+        self.extracted_records = []
+        # 読み込んだExcelデータを格納するDataFrame変数を初期化（最初は空）
+        self.df = None
+        
+        # UI（ユーザーインターフェース）構築メソッドを呼び出し
+        self.setup_ui()
+    
+    # UI（画面）を構築するメソッドの定義
+    def setup_ui(self):
+        # メインフレーム（全体のコンテナ）を作成、内側に10ピクセルの余白を設定
+        main_frame = ttk.Frame(self.root, padding="10")
+        # メインフレームをグリッドレイアウトの0行0列に配置
+        # sticky=(tk.W, tk.E, tk.N, tk.S): 上下左右（North/South/East/West）方向に伸縮
+        main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        # ファイル選択セクション用のラベル付きフレームを作成
+        file_frame = ttk.LabelFrame(main_frame, text="ファイル選択", padding="10")
+        # ファイル選択フレームを0行目、0-1列（columnspan=2で2列分）に配置
+        # pady=(0, 10): 上側0ピクセル、下側10ピクセルの余白
+        file_frame.grid(row=0, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(0, 10))
+        
+        # "入力Excelファイル:"のラベルを作成
+        # grid(row=0, column=0, sticky=tk.W): 0行0列に左寄せで配置
+        ttk.Label(file_frame, text="入力Excelファイル:").grid(row=0, column=0, sticky=tk.W)
+        # 入力ファイルのパスを保存するStringVar（tkinter専用の文字列変数）を作成
+        self.input_file_var = tk.StringVar()
+        # 入力ファイルパス表示用のエントリー（テキストボックス）を作成
+        # textvariable: StringVarと連携, width=60: 幅60文字分
+        # padx=(10, 5): 左側10ピクセル、右側5ピクセルの余白
+        ttk.Entry(file_frame, textvariable=self.input_file_var, width=60).grid(row=0, column=1, padx=(10, 5))
+        # ファイル選択ダイアログを開くボタンを作成
+        # command: ボタンクリック時に実行するメソッドを指定
+        ttk.Button(file_frame, text="参照", command=self.browse_input_file).grid(row=0, column=2)
+        
+        # "出力Excelファイル:"のラベルを作成（1行目に配置）
+        # pady=(10, 0): 上側10ピクセル、下側0ピクセルの余白
+        ttk.Label(file_frame, text="出力Excelファイル:").grid(row=1, column=0, sticky=tk.W, pady=(10, 0))
+        # 出力ファイルのパスを保存するStringVarを作成
+        self.output_file_var = tk.StringVar()
+        # 出力ファイルパス表示用のエントリーを作成
+        ttk.Entry(file_frame, textvariable=self.output_file_var, width=60).grid(row=1, column=1, padx=(10, 5), pady=(10, 0))
+        # 出力ファイル選択ダイアログを開くボタンを作成
+        ttk.Button(file_frame, text="参照", command=self.browse_output_file).grid(row=1, column=2, pady=(10, 0))
+        
+        # 抽出オプション設定用のラベル付きフレームを作成
+        option_frame = ttk.LabelFrame(main_frame, text="抽出オプション", padding="10")
+        # オプションフレームを1行目に配置
+        option_frame.grid(row=1, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(0, 10))
+        
+        # レコード抽出実行ボタンを作成
+        # padx=(0, 10): 左側0ピクセル、右側10ピクセルの余白
+        ttk.Button(option_frame, text="レコード抽出", command=self.extract_records).grid(row=0, column=0, padx=(0, 10))
+        
+        # 重複処理オプション用のStringVarを作成、初期値を"keep_first"に設定
+        self.duplicate_var = tk.StringVar(value="keep_first")
+        # "重複処理:"ラベルを作成
+        # padx=(20, 5): 左側20ピクセル、右側5ピクセルの余白
+        ttk.Label(option_frame, text="重複処理:").grid(row=0, column=1, padx=(20, 5))
+        # 重複処理オプション選択用のコンボボックス（ドロップダウン）を作成
+        duplicate_combo = ttk.Combobox(option_frame, textvariable=self.duplicate_var, width=15)
+        # コンボボックスの選択肢を設定
+        duplicate_combo['values'] = ('keep_first', 'keep_all', 'remove_all')
+        # コンボボックスを0行2列に配置
+        duplicate_combo.grid(row=0, column=2)
+        
+        # "ドメインフィルター:"ラベルを作成（1行目）
+        ttk.Label(option_frame, text="ドメインフィルター:").grid(row=1, column=0, sticky=tk.W, pady=(10, 0))
+        # ドメインフィルター用のStringVarを作成
+        self.domain_filter_var = tk.StringVar()
+        # ドメインフィルター入力用のエントリーを作成
+        ttk.Entry(option_frame, textvariable=self.domain_filter_var, width=20).grid(row=1, column=1, padx=(10, 0), pady=(10, 0))
+        # フィルター適用ボタンを作成
+        ttk.Button(option_frame, text="フィルター適用", command=self.apply_filter).grid(row=1, column=2, padx=(10, 0), pady=(10, 0))
+        
+        # 抽出結果表示用のラベル付きフレームを作成
+        result_frame = ttk.LabelFrame(main_frame, text="抽出結果", padding="10")
+        # 結果フレームを2行目に配置
+        # sticky=(tk.W, tk.E, tk.N, tk.S): 全方向に伸縮（メイン表示エリア）
+        result_frame.grid(row=2, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(0, 10))
+        
+        # 抽出結果を表形式で表示するTreeviewウィジェットを作成
+        # show='tree headings': ツリー形式とヘッダーの両方を表示
+        # height=15: 表示行数を15行に設定
+        self.tree = ttk.Treeview(result_frame, show='tree headings', height=15)
+        
+        # 縦方向スクロールバーを作成
+        # orient="vertical": 縦向きスクロールバー
+        # command=self.tree.yview: スクロール操作をTreeviewの縦スクロールに連携
+        v_scrollbar = ttk.Scrollbar(result_frame, orient="vertical", command=self.tree.yview)
+        # 横方向スクロールバーを作成
+        h_scrollbar = ttk.Scrollbar(result_frame, orient="horizontal", command=self.tree.xview)
+        # Treeviewのスクロール設定をスクロールバーと連携
+        # yscrollcommand: 縦スクロール情報をスクロールバーに送信
+        # xscrollcommand: 横スクロール情報をスクロールバーに送信
+        self.tree.configure(yscrollcommand=v_scrollbar.set, xscrollcommand=h_scrollbar.set)
+        
+        # Treeviewを0行0列に配置、全方向に伸縮
+        self.tree.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        # 縦スクロールバーを0行1列に配置、上下方向に伸縮
+        v_scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
+        # 横スクロールバーを1行0列に配置、左右方向に伸縮
+        h_scrollbar.grid(row=1, column=0, sticky=(tk.W, tk.E))
+        
+        # 統計情報表示用のStringVarを作成、初期値を設定
+        self.stats_var = tk.StringVar(value="抽出済み: 0レコード")
+        # 統計情報表示用のラベルを作成
+        # textvariable: StringVarと連携して動的に表示内容を更新
+        ttk.Label(result_frame, textvariable=self.stats_var).grid(row=2, column=0, sticky=tk.W, pady=(10, 0))
+        
+        # アクション（保存等）操作用のラベル付きフレームを作成
+        action_frame = ttk.LabelFrame(main_frame, text="アクション", padding="10")
+        # アクションフレームを3行目に配置
+        action_frame.grid(row=3, column=0, columnspan=2, sticky=(tk.W, tk.E))
+        
+        # "出力シート名:"ラベルを作成
+        ttk.Label(action_frame, text="出力シート名:").grid(row=0, column=0, sticky=tk.W)
+        # 出力シート名用のStringVarを作成、デフォルト値を設定
+        self.sheet_name_var = tk.StringVar(value="メールアドレス含有レコード")
+        # シート名入力用のエントリーを作成
+        ttk.Entry(action_frame, textvariable=self.sheet_name_var, width=25).grid(row=0, column=1, padx=(10, 20))
+        
+        # 選択されたレコードのみ出力するボタンを作成
+        ttk.Button(action_frame, text="選択レコードを出力", command=self.save_selected_records).grid(row=0, column=2, padx=(0, 10))
+        # 全レコードを出力するボタンを作成
+        ttk.Button(action_frame, text="全レコードを出力", command=self.save_all_records).grid(row=0, column=3, padx=(0, 10))
+        # ファイル状態確認ボタンを作成（1行目に配置）
+        ttk.Button(action_frame, text="ファイル状態確認", command=self.check_file_status).grid(row=1, column=2, padx=(0, 10), pady=(5, 0))
+        # 結果クリアボタンを作成
+        ttk.Button(action_frame, text="結果をクリア", command=self.clear_results).grid(row=0, column=4)
+        
+        # 処理中を示すプログレスバーを作成
+        # mode='indeterminate': 無限ループ型（処理時間不明の場合）
+        self.progress = ttk.Progressbar(main_frame, mode='indeterminate')
+        # プログレスバーを4行目に配置、左右方向に伸縮
+        self.progress.grid(row=4, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(10, 0))
+        
+        # グリッドレイアウトの重み設定（ウィンドウリサイズ時の動作制御）
+        # メインウィンドウの0列目に重み1を設定（横方向リサイズ時に伸縮）
+        self.root.columnconfigure(0, weight=1)
+        # メインウィンドウの0行目に重み1を設定（縦方向リサイズ時に伸縮）
+        self.root.rowconfigure(0, weight=1)
+        # メインフレームの0列目に重み1を設定
+        main_frame.columnconfigure(0, weight=1)
+        # メインフレームの2行目（結果表示エリア）に重み1を設定
+        main_frame.rowconfigure(2, weight=1)
+        # 結果フレームの0列目に重み1を設定
+        result_frame.columnconfigure(0, weight=1)
+        # 結果フレームの0行目（Treeview）に重み1を設定
+        result_frame.rowconfigure(0, weight=1)
+    
+    # 入力ファイル選択ダイアログを開くメソッド
+    def browse_input_file(self):
+        # ファイル選択ダイアログを表示
+        filename = filedialog.askopenfilename(
+            # ダイアログのタイトルを設定
+            title="入力Excelファイルを選択",
+            # 表示するファイル種類のフィルターを設定
+            # ("表示名", "拡張子パターン")の形式
+            filetypes=[("Excel files", "*.xlsx *.xls"), ("All files", "*.*")]
+        )
+        # ファイルが選択された場合（キャンセル時は空文字列が返る）
+        if filename:
+            # 選択されたファイルパスをStringVarに設定
+            self.input_file_var.set(filename)
+    
+    # 出力ファイル選択ダイアログを開くメソッド
+    def browse_output_file(self):
+        # 保存ファイル選択ダイアログを表示
+        filename = filedialog.asksaveasfilename(
+            # ダイアログのタイトルを設定
+            title="出力Excelファイルを選択",
+            # デフォルトの拡張子を設定
+            defaultextension=".xlsx",
+            # 保存可能なファイル種類のフィルターを設定
+            filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")]
+        )
+        # ファイル名が指定された場合
+        if filename:
+            # 指定されたファイルパスをStringVarに設定
+            self.output_file_var.set(filename)
+    
+    # メールアドレス含有レコード抽出処理を開始するメソッド
+    def extract_records(self):
+        # 入力ファイルパスをStringVarから取得
+        input_file = self.input_file_var.get()
+        # 入力ファイルが指定されていない場合
+        if not input_file:
+            # エラーメッセージダイアログを表示
+            messagebox.showerror("エラー", "入力ファイルを選択してください")
+            # メソッドを終了
+            return
+        
+        # プログレスバーを開始（10ミリ秒間隔でアニメーション）
+        self.progress.start(10)
+        # 重い処理を別スレッドで実行（UIが固まるのを防ぐ）
+        # target: 実行するメソッド, args: 引数のタプル, daemon=True: メインスレッド終了時に自動終了
+        threading.Thread(target=self._extract_records_worker, args=(input_file,), daemon=True).start()
+    
+    # 実際のレコード抽出処理を行うワーカーメソッド（別スレッドで実行）
+    def _extract_records_worker(self, input_file):
+        # エラーハンドリングのためのtry文開始
+        try:
+            # pandasを使ってExcelファイルを読み込み、DataFrameオブジェクトを作成
+            self.df = pd.read_excel(input_file)
+            
+            # メールアドレスを含む行の情報を保存するリストを初期化
+            email_rows = []
+            # DataFrameの各行をループ処理
+            # iterrows(): (インデックス, 行データ)のタプルを返すイテレータ
+            for index, row in self.df.iterrows():
+                # この行にメールアドレスがあるかのフラグを初期化
+                has_email = False
+                # この行で見つかったメールアドレスを保存するリストを初期化
+                email_info = []
+                
+                # DataFrameの各列をループ処理
+                for col in self.df.columns:
+                    # セルの値を文字列型に変換（数値や日付も文字列として扱う）
+                    cell_value = str(row[col])
+                    # セルの値がNaN（空）でない場合のみ処理
+                    if cell_value != 'nan':
+                        # 正規表現を使ってメールアドレスパターンを検索
+                        # re.findall(): マッチした全ての文字列をリストで返す
+                        found_emails = re.findall(self.email_pattern, cell_value)
+                        # メールアドレスが見つかった場合
+                        if found_emails:
+                            # メールアドレス存在フラグをTrueに設定
+                            has_email = True
+                            # 見つかったメールアドレスをリストに追加
+                            # extend(): リストの要素を個別に追加（appendはリスト全体を一つの要素として追加）
+                            email_info.extend(found_emails)
+                
+                # この行にメールアドレスが含まれていた場合
+                if has_email:
+                    # 行全体の情報を辞書形式で作成
+                    record_info = {
+                        # DataFrameでの行インデックス（0から始まる）
+                        'index': index,
+                        # Excelファイルでの実際の行番号（ヘッダー行があるので+2）
+                        'excel_row': index + 2,
+                        # 重複メールアドレスを除去したリスト
+                        # set()で重複除去 → list()でリスト型に戻す
+                        'emails': list(set(email_info)),
+                        # 行全体のデータを辞書形式に変換
+                        # to_dict(): pandas Seriesを辞書に変換
+                        'data': row.to_dict()
+                    }
+                    # レコード情報をメールアドレス含有行リストに追加
+                    email_rows.append(record_info)
+            
+            # 重複処理メソッドを呼び出し、処理済みの行リストを取得
+            processed_rows = self._process_duplicates(email_rows)
+            
+            # メインスレッドでUI更新メソッドを実行
+            # root.after(0, method, args): 次のイベントループでメソッドを実行
+            self.root.after(0, self._update_record_list, processed_rows)
+            
+        # 例外（エラー）が発生した場合の処理
+        except Exception as e:
+            # メインスレッドでエラーメッセージダイアログを表示
+            # lambda: 引数なしの無名関数（一時的な関数）
+            # str(e): 例外オブジェクトを文字列に変換
+            self.root.after(0, lambda: messagebox.showerror("エラー", f"ファイル読み込みエラー: {str(e)}"))
+        # try文の最後に必ず実行される処理（正常・異常終了に関わらず）
+        finally:
+            # メインスレッドでプログレスバーを停止
+            self.root.after(0, self.progress.stop)
+    
+    # 重複レコードの処理ロジックを実装するメソッド
+    def _process_duplicates(self, email_rows):
+        # メソッドの説明を記述するdocstring
+        """重複処理のロジック"""
+        # 重複処理オプションをStringVarから取得
+        duplicate_option = self.duplicate_var.get()
+        
+        # "全て保持"オプションの場合
+        if duplicate_option == "keep_all":
+            # 何も処理せずにそのまま返す
+            return email_rows
+        
+        # 既に見たメールアドレスを記録するセット（重複なしのコレクション）
+        seen_emails = set()
+        # 処理済みの行を保存するリスト
+        processed_rows = []
+        
+        # 各レコードをループ処理
+        for row in email_rows:
+            # そのレコードのメールアドレスをセット型に変換
+            row_emails = set(row['emails'])
+            
+            # "最初のみ保持"オプションの場合
+            if duplicate_option == "keep_first":
+                # このレコードのメールアドレスが既出でない場合
+                # any(): イテラブルの要素のいずれかがTrueの場合にTrueを返す
+                # not any(): 全てがFalseの場合にTrueを返す
+                if not any(email in seen_emails for email in row_emails):
+                    # 処理済みリストに追加
+                    processed_rows.append(row)
+                    # 見たメールアドレスセットに追加
+                    # update(): セットに複数の要素を追加
+                    seen_emails.update(row_emails)
+            
+            # "重複は除外"オプションの場合
+            elif duplicate_option == "remove_all":
+                # このレコードのメールアドレスが既出でない場合
+                if not any(email in seen_emails for email in row_emails):
+                    # 他の行にも同じメールアドレスがあるかチェック
+                    is_unique = True
+                    # 全ての他の行をチェック
+                    for other_row in email_rows:
+                        # 自分以外の行で
+                        if other_row['index'] != row['index']:
+                            # 同じメールアドレスが含まれている場合
+                            if any(email in other_row['emails'] for email in row_emails):
+                                # ユニークでないフラグを設定
+                                is_unique = False
+                                # ループを抜ける
+                                break
+                    
+                    # ユニークなメールアドレスの場合のみ
+                    if is_unique:
+                        # 処理済みリストに追加
+                        processed_rows.append(row)
+                    
+                    # いずれにしても見たメールアドレスに追加
+                    seen_emails.update(row_emails)
+        
+        # 処理済みの行リストを返す
+        return processed_rows
+    
+    # 抽出したレコードリストでインスタンス変数を更新するメソッド
+    def _update_record_list(self, records):
+        # 抽出されたレコードをインスタンス変数に保存
+        self.extracted_records = records
+        # Treeview（表示）を更新
+        self._refresh_tree_view()
+    
+    # Treeviewの表示内容を更新するメソッド
+    def _refresh_tree_view(self):
+        # Treeviewの既存の全アイテムを削除
+        # get_children(): Treeviewの全子要素（行）を取得
+        for item in self.tree.get_children():
+            # 各アイテムを削除
+            self.tree.delete(item)
+        
+        # 抽出されたレコードが存在しない場合
+        if not self.extracted_records:
+            # メソッドを終了（空の状態で表示）
+            return
+        
+        # DataFrameが存在する場合（列情報を動的に設定）
+        if self.df is not None:
+            # 表示する列のリストを作成
+            # ['Row', 'Emails'] + 元のDataFrameの全列名
+            columns = ['Row'] + ['Emails'] + list(self.df.columns)
+            # Treeviewの列設定を更新
+            self.tree['columns'] = columns
+            # 表示モードを設定（ツリー + ヘッダー）
+            self.tree['show'] = 'tree headings'
+            
+            # 最初の列（#0）のヘッダーを設定
+            self.tree.heading('#0', text='No.')
+            # 最初の列の幅を設定
+            self.tree.column('#0', width=50)
+            
+            # 各列のヘッダーと幅を設定
+            for col in columns:
+                # 列のヘッダーテキストを設定
+                self.tree.heading(col, text=col)
+                # 列の種類に応じて幅を設定
+                if col == 'Emails':
+                    # メールアドレス列は広めに設定
+                    self.tree.column(col, width=200)
+                elif col == 'Row':
+                    # 行番号列は狭めに設定
+                    self.tree.column(col, width=50)
+                else:
+                    # その他の列は標準幅に設定
+                    self.tree.column(col, width=120)
+        
+        # ドメインフィルター文字列を取得し、小文字変換＋前後空白除去
+        domain_filter = self.domain_filter_var.get().lower().strip()
+        # フィルタリング後のレコードを保存するリスト
+        filtered_records = []
+        
+        # 抽出された各レコードをチェック
+        # enumerate(): インデックス付きでループ
+        for i, record in enumerate(self.extracted_records):
+            # フィルターが空 OR レコード内のメールアドレスにフィルター文字列が含まれる場合
+            if not domain_filter or any(domain_filter in email.lower() for email in record['emails']):
+                # フィルタリング結果に追加
+                filtered_records.append(record)
+                
+                # メールアドレスリストをカンマ区切り文字列に変換
+                # join(): リストの要素を指定した文字で結合
+                emails_str = ', '.join(record['emails'])
+                # Treeviewの行データを作成（最初の2列は行番号とメール）
+                row_values = [record['excel_row'], emails_str]
+                
+                # 元のDataFrameの各列データを行データに追加
+                for col in self.df.columns:
+                    # 辞書からキーで値を取得、存在しない場合は空文字
+                    value = record['data'].get(col, '')
+                    # pandasのNaN（Not a Number）値をチェック
+                    if pd.isna(value):
+                        # NaNの場合は空文字に置換
+                        value = ''
+                    # 値を文字列型に変換してリストに追加
+                    row_values.append(str(value))
+                
+                # Treeviewに新しい行を挿入
+                # '': 親アイテム（空文字はルート）
+                # 'end': 末尾に挿入
+                # iid=i: アイテムID（後で参照するため）
+                # text=str(i+1): 最初の列に表示する番号（1から開始）
+                # values=row_values: 各列に表示するデータ
+                self.tree.insert('', 'end', iid=i, text=str(i+1), values=row_values)
+        
+        # 統計情報を更新
+        # 抽出された全レコード数を取得
+        total = len(self.extracted_records)
+        # フィルタリング後のレコード数を取得
+        filtered = len(filtered_records)
+        # フィルターが適用されている場合
+        if domain_filter:
+            # 全体数と表示数の両方を表示
+            # f-string: 文字列の中に変数を埋め込む記法
+            self.stats_var.set(f"抽出済み: {total}レコード / 表示中: {filtered}レコード")
+        else:
+            # フィルターなしの場合は全体数のみ表示
+            self.stats_var.set(f"抽出済み: {total}レコード")
+    
+    # フィルター適用ボタンがクリックされた時に呼ばれるメソッド
+    def apply_filter(self):
+        # Treeviewの表示を更新（フィルターを反映）
+        self._refresh_tree_view()
+    
+    # 選択されたレコードを保存するメソッド
+    def save_selected_records(self):
+        # Treeviewで選択されているアイテムを取得
+        selected_items = self.tree.selection()
+        # 何も選択されていない場合
+        if not selected_items:
+            # 警告メッセージを表示
+            messagebox.showwarning("警告", "保存するレコードを選択してください")
+            # メソッドを終了
+            return
+        
+        # 保存対象のレコードを格納するリスト
+        records_to_save = []
+        # 選択された各アイテムを処理
+        for item in selected_items:
+            # アイテムの表示番号（text）を取得し、配列インデックスに変換（-1）
+            index = int(self.tree.item(item)['text']) - 1
+            # インデックスが有効範囲内かチェック
+            if 0 <= index < len(self.extracted_records):
+                # 対応するレコードを保存リストに追加
+                records_to_save.append(self.extracted_records[index])
+        
+        # Excel保存メソッドを呼び出し
+        self._save_records_to_excel(records_to_save)
+    
+    # 全レコード（フィルタリング適用済み）を保存するメソッド
+    def save_all_records(self):
+        # 抽出されたレコードが存在しない場合
+        if not self.extracted_records:
+            # 警告メッセージを表示
+            messagebox.showwarning("警告", "保存するレコードがありません")
+            # メソッドを終了
+            return
+        
+        # ドメインフィルター文字列を取得（小文字変換＋前後空白除去）
+        domain_filter = self.domain_filter_var.get().lower().strip()
+        # 保存対象のレコードを格納するリスト
+        records_to_save = []
+        
+        # 抽出された各レコードをチェック
+        for record in self.extracted_records:
+            # フィルターが空 OR レコード内のメールアドレスにフィルター文字列が含まれる場合
+            if not domain_filter or any(domain_filter in email.lower() for email in record['emails']):
+                # 保存対象リストに追加
+                records_to_save.append(record)
+        
+        # Excel保存メソッドを呼び出し
+        self._save_records_to_excel(records_to_save)
+    
+    # レコードをExcelファイルに保存する実際の処理メソッド
+    def _save_records_to_excel(self, records):
+        # 出力ファイルパスをStringVarから取得
+        output_file = self.output_file_var.get()
+        # 出力ファイルが指定されていない場合
+        if not output_file:
+            # エラーメッセージを表示
+            messagebox.showerror("エラー", "出力ファイルを指定してください")
+            # メソッドを終了
+            return
+        
+        # エラーハンドリングのためのtry文開始
+        try:
+            # Excel保存用のデータリストを初期化
+            save_data = []
+            # 各レコードを処理
+            for record in records:
+                # 元のデータをコピー（元データを変更しないため）
+                # copy(): 辞書の浅いコピーを作成
+                row_data = record['data'].copy()
+                # メールアドレス列を追加（カンマ区切り文字列）
+                row_data['抽出されたメールアドレス'] = ', '.join(record['emails'])
+                # 元の行番号列を追加
+                row_data['元の行番号'] = record['excel_row']
+                # 保存データリストに追加
+                save_data.append(row_data)
+            
+            # pandasのDataFrameを作成
+            df_save = pd.DataFrame(save_data)
+            
+            # 出力シート名を取得（空の場合はデフォルト値を使用）
+            # or演算子: 左側がFalsyな値の場合、右側の値を使用
+            sheet_name = self.sheet_name_var.get() or "メールアドレス含有レコード"
+            
+            # ファイル使用状況チェックのためosモジュールをインポート
+            import os
+            # 出力ファイルが既に存在する場合
+            if os.path.exists(output_file):
+                try:
+                    # ファイルが他のアプリケーションで使用中かテスト
+                    # 'r+b': バイナリ読み書きモードで開く
+                    with open(output_file, 'r+b'):
+                        # pass: 何もしない（ファイルが開けるかのテストのみ）
+                        pass
+                # IOError: 入出力エラー（ファイルが使用中等）
+                except IOError:
+                    # ユーザーに対処方法を選択させるダイアログを表示
+                    response = messagebox.askyesno(
+                        # ダイアログのタイトル
+                        "ファイルが使用中です", 
+                        # ダイアログのメッセージ（複数行）
+                        f"ファイル '{os.path.basename(output_file)}' が他のアプリケーションで開かれている可能性があります。\n"
+                        "ファイルを閉じてから「はい」をクリックするか、\n"
+                        "「いいえ」をクリックして別名で保存してください。"
+                    )
+                    # 「いいえ」が選択された場合（別名保存を選択）
+                    if not response:
+                        # 別名保存ダイアログを表示
+                        new_file = filedialog.asksaveasfilename(
+                            # ダイアログのタイトル
+                            title="別名で保存",
+                            # デフォルトの拡張子
+                            defaultextension=".xlsx",
+                            # ファイル種類フィルター
+                            filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")],
+                            # 初期表示ディレクトリ（元ファイルと同じフォルダ）
+                            initialdir=os.path.dirname(output_file),
+                            # 初期ファイル名（元ファイル名に"_new"を付加）
+                            initialfile=f"{os.path.splitext(os.path.basename(output_file))[0]}_new.xlsx"
+                        )
+                        # 新しいファイル名が指定された場合
+                        if new_file:
+                            # 出力ファイルパスを更新
+                            output_file = new_file
+                            # StringVarも更新
+                            self.output_file_var.set(output_file)
+                        else:
+                            # キャンセルされた場合はメソッドを終了
+                            return
+            
+            # Excel保存処理を実行
+            # pd.ExcelWriter: Excelファイル書き込み用のオブジェクト
+            # engine='openpyxl': openpyxlライブラリを使用
+            # mode='w': 書き込みモード（既存ファイルを上書き）
+            with pd.ExcelWriter(output_file, engine='openpyxl', mode='w') as writer:
+                # DataFrameをExcelシートに書き出し
+                # sheet_name: シート名
+                # index=False: 行インデックスを出力しない
+                df_save.to_excel(writer, sheet_name=sheet_name, index=False)
+            
+            # 成功メッセージを表示
+            # os.path.basename(): ファイルパスからファイル名のみ抽出
+            messagebox.showinfo("成功", f"{len(records)}レコードを {os.path.basename(output_file)} に保存しました")
+            
+        # PermissionError: アクセス権限エラー
+        except PermissionError:
+            # 権限エラー用の詳細メッセージを表示
+            messagebox.showerror(
+                "権限エラー", 
+                f"ファイルの保存に失敗しました。\n\n"
+                f"考えられる原因:\n"
+                f"• ファイルが他のアプリケーション（Excel等）で開かれている\n"
+                f"• フォルダへの書き込み権限がない\n"
+                f"• ファイルが読み取り専用になっている\n\n"
+                f"対処法:\n"
+                f"• Excelファイルを閉じてから再実行\n"
+                f"• 管理者権限で実行\n"
+                f"• 別の保存場所を選択"
+            )
+        # FileNotFoundError: ファイル・フォルダが見つからないエラー
+        except FileNotFoundError:
+            # ファイルエラー用のメッセージを表示
+            messagebox.showerror(
+                "ファイルエラー",
+                f"指定されたフォルダが見つかりません。\n"
+                f"保存先のフォルダが存在することを確認してください。"
+            )
+        # その他の例外
+        except Exception as e:
+            # エラーメッセージを文字列に変換
+            error_msg = str(e)
+            # "Permission denied"文字列が含まれる場合
+            if "Permission denied" in error_msg:
+                # アクセス拒否専用のメッセージを表示
+                messagebox.showerror(
+                    "アクセス拒否エラー",
+                    f"ファイルへのアクセスが拒否されました。\n\n"
+                    f"• ファイルを閉じてから再実行してください\n"
+                    f"• 別の保存場所を試してください\n"
+                    f"• 管理者権限で実行してください\n\n"
+                    f"詳細: {error_msg}"
+                )
+            else:
+                # 一般的なエラーメッセージを表示
+                messagebox.showerror("エラー", f"保存エラー: {error_msg}")
+    
+    # 出力ファイルの状態を確認するメソッド
+    def check_file_status(self):
+        # メソッドの説明を記述するdocstring
+        """出力ファイルの状態を確認"""
+        # 出力ファイルパスをStringVarから取得
+        output_file = self.output_file_var.get()
+        # 出力ファイルが指定されていない場合
+        if not output_file:
+            # 警告メッセージを表示
+            messagebox.showwarning("警告", "出力ファイルを指定してください")
+            # メソッドを終了
+            return
+        
+        # ファイル操作のためosモジュールをインポート
+        import os
+        
+        # ファイルが存在しない場合
+        if not os.path.exists(output_file):
+            # ファイル新規作成の情報を表示
+            messagebox.showinfo("ファイル状態", f"ファイルは存在しません。新規作成されます。\n\nパス: {output_file}")
+            # メソッドを終了
+            return
+        
+        # ファイルアクセステストのためのtry文
+        try:
+            # ファイルをバイナリ読み書きモードで開いてアクセステスト
+            with open(output_file, 'r+b'):
+                # ファイルサイズをバイト単位で取得
+                file_size = os.path.getsize(output_file)
+                # バイトからメガバイトに変換
+                file_size_mb = file_size / (1024 * 1024)
+                # ファイル使用可能の情報を表示
+                messagebox.showinfo(
+                    "ファイル状態", 
+                    f"ファイルは使用可能です。\n\n"
+                    f"パス: {os.path.basename(output_file)}\n"
+                    f"サイズ: {file_size_mb:.2f} MB\n"
+                    f"状態: 書き込み可能"
+                )
+        # IOError: ファイルが使用中等の入出力エラー
+        except IOError:
+            # ファイル使用中の警告を表示
+            messagebox.showwarning(
+                "ファイル状態", 
+                f"ファイルが他のアプリケーションで使用中です。\n\n"
+                f"パス: {os.path.basename(output_file)}\n"
+                f"状態: 使用中（書き込み不可）\n\n"
+                f"対処法:\n"
+                f"• Excelファイルを閉じる\n"
+                f"• 別名で保存する"
+            )
+        # その他の例外
+        except Exception as e:
+            # 一般的なエラーメッセージを表示
+            messagebox.showerror("エラー", f"ファイル状態の確認中にエラーが発生しました:\n{str(e)}")
+
+    # 抽出結果をクリアするメソッド
+    def clear_results(self):
+        # 抽出レコードリストを空にする
+        self.extracted_records = []
+        # DataFrameをNoneに初期化
+        self.df = None
+        # Treeviewの全アイテムを削除
+        for item in self.tree.get_children():
+            # 各アイテムを削除
+            self.tree.delete(item)
+        # 統計情報を初期状態にリセット
+        self.stats_var.set("抽出済み: 0レコード")
+        # ドメインフィルターを空にする
+        self.domain_filter_var.set("")
+
+# アプリケーションのメイン実行関数
+def main():
+    # tkinterのメインウィンドウ（Tkオブジェクト）を作成
+    root = tk.Tk()
+    # EmailRecordExtractorクラスのインスタンスを作成
+    # rootウィンドウを引数として渡す
+    app = EmailRecordExtractor(root)
+    # GUIのメインループを開始
+    # ユーザーの操作（クリック、キー入力等）を待ち受ける無限ループ
+    root.mainloop()
+
+# スクリプトが直接実行された場合の条件分岐
+# __name__ == "__main__": このファイルが直接実行された場合のみTrue
+# import時はFalseなので、main()は実行されない
+if __name__ == "__main__":
+    # メイン関数を呼び出してアプリケーションを起動
+    main()
